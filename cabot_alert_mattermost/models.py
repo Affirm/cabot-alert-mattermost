@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from urlparse import urljoin
 from cabot.cabotapp.alert import AlertPlugin, AlertPluginUserData
@@ -168,10 +169,15 @@ class MatterMostAlert(AlertPlugin):
         self._send_alert(service, message)
 
 
+def validate_mattermost_alias(alias):
+    if alias.startswith('@'):
+        raise ValidationError('Do not include a leading @ in your Mattermost alias.')
+
+
 class MatterMostAlertUserData(AlertPluginUserData):
     '''
     This provides the Mattermost alias for each user.
     Each object corresponds to a User
     '''
     name = "MatterMost Plugin"
-    mattermost_alias = models.CharField(max_length=50, blank=True)
+    mattermost_alias = models.CharField(max_length=50, blank=True, validators=[validate_mattermost_alias])
