@@ -9,7 +9,9 @@ from django.conf import settings
 from django.template import Context, Template
 
 import requests
+import logging
 
+logger = logging.getLogger(__name__)
 
 EMOJIS = {
     'WARNING': ":thinking:",
@@ -72,6 +74,8 @@ class MatterMostAlert(AlertPlugin):
         if service.mattermost_instance is not None:
             url = service.mattermost_instance.server_url
             api_token = service.mattermost_instance.api_token
+        else:
+            raise RuntimeError('Mattermost instance not set.')
 
         url = urljoin(url, 'api/v4/')
 
@@ -83,7 +87,6 @@ class MatterMostAlert(AlertPlugin):
         # Headers for the data
         headers = {
             'Authorization': 'Bearer {}'.format(api_token),
-            'Content-Type': 'application/json',
         }
 
         failing_checks = service.all_failing_checks()
@@ -96,7 +99,8 @@ class MatterMostAlert(AlertPlugin):
         for check in failing_checks:
             image = check.get_status_image()
             if image is not None:
-                files.append(('check_{}.png'.format(check.id), image))
+                filename = 'check_{}.png'.format(check.id)
+                files.append(('files', (filename, image)))
 
         # Send the status message
         data = dict(
@@ -105,20 +109,27 @@ class MatterMostAlert(AlertPlugin):
         )
 
         # Post all the images, if any, in one shot
-        if files:
+        if len(files) > 0:
             images_url = urljoin(url, 'files')
+
             response = requests.post(
                 images_url,
-                json=dict(channel_id=channel_id),
-                files=dict(files=files),
+                data={'channel_id': channel_id},
+                files=files,
                 headers=headers,
                 timeout=30,
             )
 
             # Don't worry about images getting uploaded
-            if response.status_code == 200:
+            if response.status_code == 201:
                 image_ids = [x['id'] for x in response.json()['file_infos']]
                 data['file_ids'] = image_ids
+                if not len(data['file_ids']) == len(files):
+                    logger.warn('Seems some files failed to upload (server returned %s file IDs, but we sent %s): %s',
+                                len(data['file_ids']), len(files), response.json())
+            else:
+                logger.warn('Images failed to upload, got status code %s: %s',
+                            response.status_code, response.json())
 
         status_url = urljoin(url, 'posts')
         response = requests.post(status_url, headers=headers, json=data)
