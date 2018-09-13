@@ -1,5 +1,4 @@
 from django.core.exceptions import ValidationError
-from django.core.urlresolvers import reverse
 from django.db import models
 from urlparse import urljoin
 from cabot.cabotapp.alert import AlertPlugin, AlertPluginUserData
@@ -82,15 +81,16 @@ class MatterMostAlert(AlertPlugin):
             url = service.mattermost_instance.server_url
             api_token = service.mattermost_instance.api_token
             webhook_url = service.mattermost_instance.webhook_url
+            channel_id = service.mattermost_instance.default_channel_id
         else:
             raise RuntimeError('Mattermost instance not set.')
 
-        url = urljoin(url, 'api/v4/')
-
-        if service.mattermost_channel_id is not None:
+        if service.mattermost_channel_id:
             channel_id = service.mattermost_channel_id
-        else:
-            channel_id = env.get('MATTERMOST_ALERT_CHANNEL_ID')
+        if not channel_id:
+            raise RuntimeError('Mattermost channel ID not set.')
+
+        url = urljoin(url, 'api/v4/')
 
         # Headers for the data
         headers = {
