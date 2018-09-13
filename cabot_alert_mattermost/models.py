@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from django.core.urlresolvers import reverse
 from django.db import models
 from urlparse import urljoin
 from cabot.cabotapp.alert import AlertPlugin, AlertPluginUserData
@@ -20,6 +21,12 @@ EMOJIS = {
     'PASSING': ":dancing-panda:",
 }
 
+COLORS = {
+    'WARNING': '#FFFF00',
+    'ERROR': '#FF0000',
+    'CRITICAL': '#FF0000',
+    'PASSING': '#00FF00',
+}
 
 MESSAGE_TEMPLATE_NORMAL = '''
 {% spaceless %}
@@ -74,6 +81,7 @@ class MatterMostAlert(AlertPlugin):
         if service.mattermost_instance is not None:
             url = service.mattermost_instance.server_url
             api_token = service.mattermost_instance.api_token
+            webhook_url = service.mattermost_instance.webhook_url
         else:
             raise RuntimeError('Mattermost instance not set.')
 
@@ -89,6 +97,11 @@ class MatterMostAlert(AlertPlugin):
             'Authorization': 'Bearer {}'.format(api_token),
         }
 
+        # channel ID -> channel name for webhook API
+        response = requests.get(urljoin(url, 'channels/{}'.format(channel_id)), headers=headers)
+        response.raise_for_status()
+        channel_name = response.json()['name']
+
         failing_checks = service.all_failing_checks()
         # Send the image messages
         if failing_checks == []:
@@ -96,19 +109,16 @@ class MatterMostAlert(AlertPlugin):
 
         # Upload images for all failing checks
         files = []
+        failing_checks_with_images = []
+        file_ids = []
         for check in failing_checks:
             image = check.get_status_image()
             if image is not None:
                 filename = 'check_{}.png'.format(check.id)
                 files.append(('files', (filename, image)))
+                failing_checks_with_images.append(check)
 
-        # Send the status message
-        data = dict(
-            channel_id=channel_id,
-            message=message,
-        )
-
-        # Post all the images, if any, in one shot
+        # Upload all the images, if any, in one shot
         if len(files) > 0:
             images_url = urljoin(url, 'files')
 
@@ -122,17 +132,36 @@ class MatterMostAlert(AlertPlugin):
 
             # Don't worry about images getting uploaded
             if response.status_code == 201:
-                image_ids = [x['id'] for x in response.json()['file_infos']]
-                data['file_ids'] = image_ids
-                if not len(data['file_ids']) == len(files):
+                file_ids = [x['id'] for x in response.json()['file_infos']]
+                if not len(file_ids) == len(files):
                     logger.warn('Seems some files failed to upload (server returned %s file IDs, but we sent %s): %s',
-                                len(data['file_ids']), len(files), response.json())
+                                len(file_ids), len(files), response.json())
             else:
                 logger.warn('Images failed to upload, got status code %s: %s',
                             response.status_code, response.json())
 
-        status_url = urljoin(url, 'posts')
-        response = requests.post(status_url, headers=headers, json=data)
+        # build attachments
+        title = '{service} is {status}'.format(service=service.name, status=service.overall_status)
+        color = COLORS.get(service.overall_status)
+        attachments = [{
+            'fallback': title,  # this is the text that shows in notifications
+            'color': color,
+            'text': message,
+            'fields': [
+                {
+                    'title': check.name if len(failing_checks) > 1 else '',
+                    'short': True,
+                    'value': '![check]({})'.format(urljoin(url, 'files/{}'.format(file_id))),
+                }
+                for check, file_id in zip(failing_checks_with_images, file_ids)
+            ],
+        }]
+
+        response = requests.post(webhook_url, headers=headers, json={
+            'username': 'Cabot',
+            'channel': channel_name,
+            'attachments': attachments,
+        })
         response.raise_for_status()
 
     def send_alert(self, service, users, duty_officers):
@@ -192,3 +221,6 @@ class MatterMostAlertUserData(AlertPluginUserData):
     '''
     name = "MatterMost Plugin"
     mattermost_alias = models.CharField(max_length=50, blank=True, validators=[validate_mattermost_alias])
+
+    def is_configured(self):
+        return bool(self.mattermost_alias)
