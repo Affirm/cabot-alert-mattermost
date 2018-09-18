@@ -13,6 +13,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# name of the Cabot MM user, so it can add itself to channels
+CABOT_USERNAME = env.get('MATTERMOST_CABOT_USERNAME', 'cabot')
+
 EMOJIS = {
     'WARNING': ":thinking:",
     'ERROR': ":sad-panda:",
@@ -65,16 +68,28 @@ MESSAGE_TEMPLATE_ALERT = '''
 '''
 
 
+def _check_response(response):
+    # type: (requests.Response) -> None
+    """Raise for status, but include the full response in the exception since MM gives us nice error messages"""
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        raise requests.HTTPError(e.message + ', response body: ' + response.text, response=response)
+
+
 class MatterMostAlert(AlertPlugin):
     name = "MatterMost"
     author = "Mahendra M"
 
-    def _send_alert(self, service, message):
+    def _send_alert(self, service, message, add_users=[]):
         """
         Send an alert with the service status, failing
         checks for a service and images to a Mattermost channel
         :param service: the Service we're alerting for
         :param message: the message to post
+        :param add_users: MM usernames to ensure are in the channel (so @mentions work)
+                          note that CABOT_USERNAME is automatically added to this list
+                          (i.e. Cabot will add itself to any channels it sends messages to)
         :return: None
         """
         if service.mattermost_instance is not None:
@@ -96,10 +111,30 @@ class MatterMostAlert(AlertPlugin):
             'Authorization': 'Bearer {}'.format(api_token),
         }
 
+        # ensure listed users are in the channel (including the Cabot user)
+        # if this fails, we may not be able to send the message (if the Cabot user isn't already in the channel...)
+
+        # first, map usernames -> user ids, since the channels API requires ids
+        # note that any usernames that can't be found are just not included in the response
+        # for example, ["i_dont_exist", "i_exist", ""] returns [{"username": "i_exist", "id": "123123", ...}]
+        response = requests.post(urljoin(url, 'users/usernames'), headers=headers, json=add_users + [CABOT_USERNAME])
+        if response.status_code == 200:
+            for user in response.json():
+                # can't find any bulk API for adding users to channel, so we do it one at a time
+                username = user['username']
+                user_id = user['id']
+
+                # if the user is already in the channel, this API call seems to just do nothing
+                response = requests.post(urljoin(url, 'channels/{}/members'.format(channel_id)),
+                                         headers=headers, json={'user_id': user_id})
+                if response.status_code != 201:
+                    logger.warn("Could not add user %s, id %s to channel id %s: [%s] %s",
+                                username, user_id, channel_id, response.status_code, response.text)
+
+        else:
+            logger.warn("Could not map usernames to user ids: [%s] %s", response.status_code, response.text)
+
         failing_checks = service.all_failing_checks()
-        # Send the image messages
-        if failing_checks == []:
-            return
 
         # Upload images for all failing checks
         files = []
@@ -151,7 +186,7 @@ class MatterMostAlert(AlertPlugin):
                 'attachments': attachments
             },
         })
-        response.raise_for_status()
+        _check_response(response)
 
     def send_alert(self, service, users, duty_officers):
         alert = True
@@ -195,7 +230,7 @@ class MatterMostAlert(AlertPlugin):
         })
 
         message = Template(template).render(c)
-        self._send_alert(service, message)
+        self._send_alert(service, message, aliases)
 
 
 def validate_mattermost_alias(alias):
