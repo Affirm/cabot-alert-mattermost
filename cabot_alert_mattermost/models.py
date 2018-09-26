@@ -80,7 +80,6 @@ class MatterMostAlert(AlertPlugin):
         if service.mattermost_instance is not None:
             url = service.mattermost_instance.server_url
             api_token = service.mattermost_instance.api_token
-            webhook_url = service.mattermost_instance.webhook_url
             channel_id = service.mattermost_instance.default_channel_id
         else:
             raise RuntimeError('Mattermost instance not set.')
@@ -97,11 +96,6 @@ class MatterMostAlert(AlertPlugin):
             'Authorization': 'Bearer {}'.format(api_token),
         }
 
-        # channel ID -> channel name for webhook API
-        response = requests.get(urljoin(url, 'channels/{}'.format(channel_id)), headers=headers)
-        response.raise_for_status()
-        channel_name = response.json()['name']
-
         failing_checks = service.all_failing_checks()
         # Send the image messages
         if failing_checks == []:
@@ -114,7 +108,7 @@ class MatterMostAlert(AlertPlugin):
         for check in failing_checks:
             image = check.get_status_image()
             if image is not None:
-                filename = 'check_{}.png'.format(check.id)
+                filename = '{}.png'.format(check.name)
                 files.append(('files', (filename, image)))
                 failing_checks_with_images.append(check)
 
@@ -147,20 +141,15 @@ class MatterMostAlert(AlertPlugin):
             'fallback': title,  # this is the text that shows in notifications
             'color': color,
             'text': message,
-            'fields': [
-                {
-                    'title': check.name if len(failing_checks) > 1 else '',
-                    'short': True,
-                    'value': '![check]({})'.format(urljoin(url, 'files/{}'.format(file_id))),
-                }
-                for check, file_id in zip(failing_checks_with_images, file_ids)
-            ],
         }]
 
-        response = requests.post(webhook_url, headers=headers, json={
-            'username': 'Cabot',
-            'channel': channel_name,
-            'attachments': attachments,
+        response = requests.post(urljoin(url, 'posts'), headers=headers, json={
+            'channel_id': channel_id,
+            'message': '',
+            'file_ids': file_ids,
+            'props': {
+                'attachments': attachments
+            },
         })
         response.raise_for_status()
 
