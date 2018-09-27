@@ -66,7 +66,7 @@ MESSAGE_TEMPLATE_ALERT = '''
 {% for alias in users %} @{{ alias }}{% endfor %} :point_up:
 {% endif %}
 {% if missing_aliases %}
-Someone tell {% for name, profile_link in missing_aliases %}[{{ name }}]({{ profile_link }}){%if not forloop.last %},{% endif %}{% endfor %} to add their MM alias to their profile! :angry:
+Someone tell {% for name, profile_link in missing_aliases %}[{{ name }}]({{ profile_link }}){%if not forloop.last %}, {% endif %}{% endfor %} to add their MM alias to their profile! :angry:
 {% endif %}
 {% endif %}
 {% endspaceless %}
