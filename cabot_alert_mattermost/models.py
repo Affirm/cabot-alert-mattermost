@@ -138,14 +138,14 @@ class MatterMostAlert(AlertPlugin):
                             "Does the Cabot user have admin permissions in this channel?\n[%s] %s",
                             username, user_id, channel_id, response.status_code, response.text)
 
-    def _upload_files(self, url, headers, channel_id, files, timeout=30):
+    def _upload_files(self, url, headers, channel_id, files, timeout_seconds=30):
         """
         Upload a list of files to MM.
         :param url: MM api v4 endpoint
         :param headers: HTTP headers (w/ api token)
         :param channel_id: channel ID to add users to
         :param files: list of files as ('filename', data) tuples
-        :param timeout: timeout for uploading all files (default 30s)
+        :param timeout_seconds: timeout for uploading all files (default 30s)
         :return: list of MM file IDs
         """
         if len(files) == 0:
@@ -160,7 +160,7 @@ class MatterMostAlert(AlertPlugin):
             data={'channel_id': channel_id},
             files=files,
             headers=headers,
-            timeout=timeout,
+            timeout=timeout_seconds,
         )
         _check_response(response)
 
@@ -186,7 +186,7 @@ class MatterMostAlert(AlertPlugin):
         # if the Cabot user isn't in the channel, we won't be able to send the message
         try:
             self._add_users_to_channel(url, headers, channel_id, users_to_add + [CABOT_USERNAME])
-        except:
+        except requests.HTTPError:
             logger.exception('Failed to add users to the channel.')
 
         failing_checks = service.all_failing_checks()
@@ -201,7 +201,7 @@ class MatterMostAlert(AlertPlugin):
                     filename = '{}.png'.format(check.name)
                     files.append((filename, image))
             file_ids = self._upload_files(url, headers, channel_id, files)
-        except:
+        except requests.HTTPError:
             # continue anyway, just don't put any images in the message
             logger.exception('Failed to get/upload images.')
 
