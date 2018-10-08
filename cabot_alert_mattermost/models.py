@@ -187,7 +187,7 @@ class MatterMostAlert(AlertPlugin):
         try:
             self._add_users_to_channel(url, headers, channel_id, users_to_add + [CABOT_USERNAME])
         except requests.HTTPError:
-            logger.exception('Failed to add users to the channel.')
+            logger.exception('Failed to add users to channel %s. Is the Cabot MM user an admin here?', channel_id)
 
         failing_checks = service.all_failing_checks()
 
@@ -203,7 +203,7 @@ class MatterMostAlert(AlertPlugin):
             file_ids = self._upload_files(url, headers, channel_id, files)
         except requests.HTTPError:
             # continue anyway, just don't put any images in the message
-            logger.exception('Failed to get/upload images.')
+            logger.exception('Failed to get/upload images to channel %s.', channel_id)
 
         # post in the channel
         response = requests.post(urljoin(url, 'posts'), headers=headers, json={
