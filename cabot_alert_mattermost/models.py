@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from django.core.urlresolvers import reverse
 from django.db import models
 from urlparse import urljoin
 from cabot.cabotapp.alert import AlertPlugin, AlertPluginUserData
@@ -10,6 +11,8 @@ from django.template import Context, Template
 
 import requests
 import logging
+
+from cabot.cabotapp.utils import build_absolute_url
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +65,12 @@ MESSAGE_TEMPLATE_ALERT = '''
 {% endif %}
 {% endfor %}
 {% if alert %}
+{% if users %}
 {% for alias in users %} @{{ alias }}{% endfor %} :point_up:
+{% endif %}
+{% if missing_aliases %}
+Someone tell {% for name, profile_link in missing_aliases %}[{{ name }}]({{ profile_link }}){%if not forloop.last %}, {% endif %}{% endfor %} to add their MM alias to their profile! :angry:
+{% endif %}
 {% endif %}
 {% endspaceless %}
 '''
@@ -223,10 +231,28 @@ class MatterMostAlert(AlertPlugin):
     def send_alert(self, service, users, duty_officers):
         alert = True
         users = list(users) + list(duty_officers)
-        aliases = [
-            u.mattermost_alias for u in
-            MatterMostAlertUserData.objects.filter(user__user__in=users)
-        ]
+
+        # some users might not have MatterMostAlertUserData objects created yet,
+        # so we remove users from missing_users as we find them
+        missing_users = set(users)
+        aliases = []
+        for mm_data in MatterMostAlertUserData.objects.filter(user__user__in=users):
+            if mm_data.mattermost_alias:
+                aliases += mm_data.mattermost_alias
+                missing_users.remove(mm_data.user.user)
+
+        missing_aliases = []
+        for user in missing_users:
+            if user.first_name:
+                name = '{} {}'.format(user.first_name, user.last_name)
+            elif user.email:
+                name = user.email
+            else:
+                name = user.username
+
+            profile_link = build_absolute_url(reverse('update-alert-user-data',
+                                              kwargs={'pk': user.pk, 'alerttype': 'MatterMost Plugin'}))
+            missing_aliases.append((name, profile_link))
 
         current_status = service.overall_status
         old_status = service.old_overall_status
@@ -253,6 +279,7 @@ class MatterMostAlert(AlertPlugin):
         c = Context({
             'service': service,
             'users': aliases,
+            'missing_aliases': missing_aliases,
             'host': settings.WWW_HTTP_HOST,
             'scheme': settings.WWW_SCHEME,
             'alert': alert,
