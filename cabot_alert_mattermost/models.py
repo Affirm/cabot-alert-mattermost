@@ -243,7 +243,13 @@ class MatterMostAlert(AlertPlugin):
 
         missing_aliases = []
         for user in missing_users:
-            name = '{} {}'.format(user.first_name, user.last_name) if user.first_name else user.email
+            if user.first_name:
+                name = '{} {}'.format(user.first_name, user.last_name)
+            elif user.email:
+                name = user.email
+            else:
+                name = user.username
+
             profile_link = build_absolute_url(reverse('update-alert-user-data',
                                               kwargs={'pk': user.pk, 'alerttype': 'MatterMost Plugin'}))
             missing_aliases.append((name, profile_link))
