@@ -232,17 +232,21 @@ class MatterMostAlert(AlertPlugin):
         alert = True
         users = list(users) + list(duty_officers)
 
+        # some users might not have MatterMostAlertUserData objects created yet,
+        # so we remove users from missing_users as we find them
+        missing_users = set(users)
         aliases = []
-        missing_aliases = []
         for mm_data in MatterMostAlertUserData.objects.filter(user__user__in=users):
             if mm_data.mattermost_alias:
                 aliases += mm_data.mattermost_alias
-            else:
-                user = mm_data.user.user
-                name = '{} {}'.format(user.first_name, user.last_name) if user.first_name else user.email
-                profile_link = build_absolute_url(reverse('update-alert-user-data',
-                                                  kwargs={'pk': user.pk, 'alerttype': 'MatterMost Plugin'}))
-                missing_aliases.append((name, profile_link))
+                missing_users.remove(mm_data.user.user)
+
+        missing_aliases = []
+        for user in missing_users:
+            name = '{} {}'.format(user.first_name, user.last_name) if user.first_name else user.email
+            profile_link = build_absolute_url(reverse('update-alert-user-data',
+                                              kwargs={'pk': user.pk, 'alerttype': 'MatterMost Plugin'}))
+            missing_aliases.append((name, profile_link))
 
         current_status = service.overall_status
         old_status = service.old_overall_status
