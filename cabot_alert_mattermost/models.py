@@ -238,7 +238,7 @@ class MatterMostAlert(AlertPlugin):
         aliases = []
         for mm_data in MatterMostAlertUserData.objects.filter(user__user__in=users):
             if mm_data.mattermost_alias:
-                aliases += mm_data.mattermost_alias
+                aliases.append(mm_data.mattermost_alias)
                 missing_users.remove(mm_data.user.user)
 
         missing_aliases = []
