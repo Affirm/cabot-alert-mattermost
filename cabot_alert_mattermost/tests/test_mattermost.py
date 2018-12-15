@@ -1,51 +1,89 @@
-import os
-from cabot.cabotapp.tests.tests_basic import LocalTestCase
-from mock import Mock, patch
+# -*- coding: utf-8 -*-
+from cabot.cabotapp.alert import AlertPlugin
+from cabot.cabotapp.models_plugins import MatterMostInstance
+from cabot.plugin_test_utils import PluginTestCase
+from mock import patch, call
 
-from cabot.cabotapp.models import UserProfile, Service
-from cabot_alert_hipchat import models
-from cabot.cabotapp.alert import update_alert_plugins
+from cabot.cabotapp.models import Service, UserProfile
+from cabot_alert_mattermost import models
 
 
-class TestHipchatAlerts(LocalTestCase):
+class TestMattermostAlerts(PluginTestCase):
     def setUp(self):
-        super(TestHipchatAlerts, self).setUp()
+        super(TestMattermostAlerts, self).setUp()
 
-        self.user_profile = UserProfile(user=self.user)
-        self.user_profile.save()
-        self.hipchat_user_data = models.HipchatAlertUserData.objects.create(
-            hipchat_alias = "test_user_hipchat_alias",
-            user = self.user_profile,
-            title=models.HipchatAlertUserData.name,
-            )
-        self.hipchat_user_data.save()
-
-        self.service.users_to_notify.add(self.user)
-        self.service.hipchat_room_id = 12
-
-        update_alert_plugins()
-        self.hipchat_plugin = models.HipchatAlert.objects.get(title=models.HipchatAlert.name)
-        self.service.alerts.add(self.hipchat_plugin)
+        self.alert = AlertPlugin.objects.get(title=models.MatterMostAlert.name)
+        self.service.alerts.add(self.alert)
         self.service.save()
-        self.service.update_status()
 
-    def test_users_to_notify(self):
-        self.assertEqual(self.service.users_to_notify.all().count(), 1)
-        self.assertEqual(self.service.users_to_notify.get(pk=1).username, self.user.username)
+        self.mm_instance = MatterMostInstance.objects.create(name='Test MM Instance',
+                                                             server_url='https://mattermost.org',
+                                                             api_token='SOME-TOKEN',
+                                                             default_channel_id='default-channel')
+        self.service.mattermost_instance = self.mm_instance
+        self.service.mattermost_channel_id = 'better-channel'
 
-    @patch('cabot_alert_hipchat.models.HipchatAlert._send_hipchat_alert')
-    def test_normal_alert(self, fake_hipchat_alert):
-        self.service.overall_status = Service.PASSING_STATUS
-        self.service.old_overall_status = Service.ERROR_STATUS
-        self.service.save()
-        self.service.alert()
-        fake_hipchat_alert.assert_called_with(u'Service Service is back to normal: http://localhost/service/1/.  @test_user_hipchat_alias', self.service, color='green', sender='Cabot/Service')
+        self.plugin = models.MatterMostAlert.objects.get()
 
-    @patch('cabot_alert_hipchat.models.HipchatAlert._send_hipchat_alert')
-    def test_failure_alert(self, fake_hipchat_alert):
-        # Most recent failed
-        self.service.overall_status = Service.CALCULATED_FAILING_STATUS
-        self.service.old_overall_status = Service.PASSING_STATUS
-        self.service.save()
-        self.service.alert()
-        fake_hipchat_alert.assert_called_with(u'Service Service reporting failing status: http://localhost/service/1/. Checks failing:  @test_user_hipchat_alias', self.service, color='red', sender='Cabot/Service')
+        # self.user's service key is user_key
+        models.MatterMostAlertUserData.objects.create(user=self.user.profile, mattermost_alias='testuser_alias')
+
+    def test_get_mm_api_for_service(self):
+        url, headers, channel_id = models._get_mm_api_for_service(self.service)
+        self.assertEqual(url, 'https://mattermost.org/api/v4/')
+        self.assertEqual(headers, {
+            'Authorization': 'Bearer SOME-TOKEN',
+        })
+        self.assertEqual(channel_id, 'better-channel')
+
+    @patch('cabot_alert_mattermost.models.requests')
+    @patch('cabot_alert_mattermost.models.MatterMostAlert._add_users_to_channel')
+    @patch('cabot_alert_mattermost.models.MatterMostAlert._upload_files')
+    def test_send_alert(self, upload_files, add_users, requests):
+        upload_files.return_value = []
+
+        self.transition_service(Service.PASSING_STATUS, Service.ERROR_STATUS)
+        add_users.assert_has_calls([
+            call('https://mattermost.org/api/v4/',
+                 {'Authorization': 'Bearer SOME-TOKEN'},
+                 'better-channel',
+                 ['testuser_alias', 'cabot']),
+        ])
+        upload_files.assert_has_calls([
+            call('https://mattermost.org/api/v4/',
+                 {'Authorization': 'Bearer SOME-TOKEN'},
+                 'better-channel',
+                 []),  # no files to upload for these checks
+        ])
+        requests.post.assert_has_calls([
+            call('https://mattermost.org/api/v4/posts', headers={'Authorization': 'Bearer SOME-TOKEN'},
+                 json={
+                     'channel_id': 'better-channel',
+                     'message': '',
+                     'file_ids': [],
+                     'props': {
+                         'attachments': [{
+                             'color': '#FF0000',
+                             'text': u'\n'
+                                     u'### Service\n'
+                                     u'**[Service](http://localhost/service/2194/) is reporting ERROR** :sad-panda:\n\n'
+                                     u'##### Failing checks\n\n\n\n'
+                                     u' @testuser_alias :point_up:\n\n\n'
+                                     u'Someone tell [dolores@affirm.com](http://localhost/user/8/profile/'
+                                     u'MatterMost%20Plugin) to add their MM alias to their profile! :angry:\n',
+                             'fallback': 'Service is ERROR'
+                         }]
+                     }
+                 }),
+            call().raise_for_status(),
+        ])
+
+    @patch('cabot_alert_mattermost.models.MatterMostAlert._send_alert')
+    def test_passing_to_warning(self, send_alert):
+        self.transition_service(Service.PASSING_STATUS, Service.WARNING_STATUS)
+        send_alert.assert_has_calls([
+            call(self.service, '\n'
+                               '### Service\n'
+                               '**[Service](http://localhost/service/2194/) is reporting WARNING** :thinking:\n\n'
+                               '##### Failing checks\n', ['testuser_alias']),
+        ])
