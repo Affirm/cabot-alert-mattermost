@@ -69,8 +69,9 @@ class TestMattermostAlerts(PluginTestCase):
                                      u'**[Service](http://localhost/service/2194/) is reporting ERROR** :sad-panda:\n\n'
                                      u'##### Failing checks\n\n\n\n'
                                      u' @testuser_alias :point_up:\n\n\n'
-                                     u'Someone tell [dolores@affirm.com](http://localhost/user/8/profile/'
-                                     u'MatterMost%20Plugin) to add their MM alias to their profile! :angry:\n',
+                                     u'Someone tell [dolores@affirm.com](http://localhost/user/{}/profile/'
+                                     u'MatterMost%20Plugin) to add their MM alias to their profile! :angry:\n'
+                                     .format(self.duty_officer.pk),
                              'fallback': 'Service is ERROR'
                          }]
                      }
@@ -87,3 +88,19 @@ class TestMattermostAlerts(PluginTestCase):
                                '**[Service](http://localhost/service/2194/) is reporting WARNING** :thinking:\n\n'
                                '##### Failing checks\n', ['testuser_alias']),
         ])
+
+    @patch('cabot_alert_mattermost.models.MatterMostAlert._send_alert')
+    def test_error_to_acked(self, send_alert):
+        self.transition_service(Service.ERROR_STATUS, Service.ACKED_STATUS)
+        send_alert.assert_has_calls([
+            call(self.service, '\n'
+                               '### Service\n'
+                               '**[Service](http://localhost/service/2194/) is reporting ACKED** :zipper_mouth_face:\n'
+                               '\n'
+                               '##### Failing checks\n', ['testuser_alias']),
+        ])
+
+    @patch('cabot_alert_mattermost.models.MatterMostAlert._send_alert')
+    def test_acked_to_acked(self, send_alert):
+        self.transition_service(Service.ACKED_STATUS, Service.ACKED_STATUS)
+        self.assertFalse(send_alert.called)
