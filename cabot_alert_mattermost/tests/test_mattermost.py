@@ -91,3 +91,19 @@ class TestMattermostAlerts(PluginTestCase):
                                '**[Service](http://localhost/service/2194/) is reporting WARNING** :thinking:\n\n'
                                '##### Failing checks\n', ['testuser_alias']),
         ])
+
+    @patch('cabot_alert_mattermost.models.MatterMostAlert._send_alert')
+    def test_error_to_acked(self, send_alert):
+        self.transition_service_status(Service.ERROR_STATUS, Service.ACKED_STATUS)
+        send_alert.assert_has_calls([
+            call(self.service, '\n'
+                               '### Service\n'
+                               '**[Service](http://localhost/service/2194/) is reporting ACKED** :zipper_mouth_face:\n'
+                               '\n'
+                               '##### Failing checks\n', ['testuser_alias']),
+        ])
+
+    @patch('cabot_alert_mattermost.models.MatterMostAlert._send_alert')
+    def test_acked_to_acked(self, send_alert):
+        self.transition_service_status(Service.ACKED_STATUS, Service.ACKED_STATUS)
+        self.assertFalse(send_alert.called)

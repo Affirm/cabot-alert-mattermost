@@ -24,6 +24,7 @@ EMOJIS = {
     'ERROR': ":sad-panda:",
     'CRITICAL': ":alert:",
     'PASSING': ":dancing-panda:",
+    'ACKED': ":zipper_mouth_face:",
 }
 
 COLORS = {
@@ -31,6 +32,7 @@ COLORS = {
     'ERROR': '#FF0000',
     'CRITICAL': '#FF0000',
     'PASSING': '#00FF00',
+    'ACKED': '#FC9300',
 }
 
 MESSAGE_TEMPLATE_NORMAL = '''
@@ -274,6 +276,12 @@ class MatterMostAlert(AlertPlugin):
             if old_status == service.WARNING_STATUS:
                 # Don't alert for recovery from WARNING status
                 alert = False
+        if current_status == service.ACKED_STATUS:
+            if old_status == service.ACKED_STATUS:
+                # Don't message repeatedly for ACKED status
+                return
+            # Don't @mention when transitioning into the ACKED status
+            alert = False
 
         jenkins_api = urljoin(settings.JENKINS_API, '/')
         c = Context({
