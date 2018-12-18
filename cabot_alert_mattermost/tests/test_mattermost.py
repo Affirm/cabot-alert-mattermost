@@ -39,10 +39,11 @@ class TestMattermostAlerts(PluginTestCase):
     @patch('cabot_alert_mattermost.models.requests')
     @patch('cabot_alert_mattermost.models.MatterMostAlert._add_users_to_channel')
     @patch('cabot_alert_mattermost.models.MatterMostAlert._upload_files')
-    def test_send_alert(self, upload_files, add_users, requests):
-        upload_files.return_value = []
+    def test_passing_to_error(self, upload_files, add_users, requests):
+        upload_files.side_effect = lambda a, b, c, files: [str(i) for i, _ in enumerate(files)]
 
-        self.transition_service(Service.PASSING_STATUS, Service.ERROR_STATUS)
+        self.run_checks([(self.es_check, False, False)], Service.PASSING_STATUS)
+
         add_users.assert_has_calls([
             call('https://mattermost.org/api/v4/',
                  {'Authorization': 'Bearer SOME-TOKEN'},
@@ -53,21 +54,23 @@ class TestMattermostAlerts(PluginTestCase):
             call('https://mattermost.org/api/v4/',
                  {'Authorization': 'Bearer SOME-TOKEN'},
                  'better-channel',
-                 []),  # no files to upload for these checks
+                 [('ES Metric Check.png', self.es_check.get_status_image())]),
         ])
         requests.post.assert_has_calls([
             call('https://mattermost.org/api/v4/posts', headers={'Authorization': 'Bearer SOME-TOKEN'},
                  json={
                      'channel_id': 'better-channel',
                      'message': '',
-                     'file_ids': [],
+                     'file_ids': ['0'],
                      'props': {
                          'attachments': [{
                              'color': '#FF0000',
                              'text': u'\n'
                                      u'### Service\n'
-                                     u'**[Service](http://localhost/service/2194/) is reporting ERROR** :sad-panda:\n\n'
-                                     u'##### Failing checks\n\n\n\n'
+                                     u'**[Service](http://localhost/service/2194/) is reporting ERROR** :sad-panda:'
+                                     u'\n\n'
+                                     u'##### Failing checks\n\n\n\n\n'
+                                     u'* [ES Metric Check](http://localhost/check/10104/) - \n\n\n\n\n\n'
                                      u' @testuser_alias :point_up:\n\n\n'
                                      u'Someone tell [dolores@affirm.com](http://localhost/user/{}/profile/'
                                      u'MatterMost%20Plugin) to add their MM alias to their profile! :angry:\n'
@@ -81,7 +84,7 @@ class TestMattermostAlerts(PluginTestCase):
 
     @patch('cabot_alert_mattermost.models.MatterMostAlert._send_alert')
     def test_passing_to_warning(self, send_alert):
-        self.transition_service(Service.PASSING_STATUS, Service.WARNING_STATUS)
+        self.transition_service_status(Service.PASSING_STATUS, Service.WARNING_STATUS)
         send_alert.assert_has_calls([
             call(self.service, '\n'
                                '### Service\n'
