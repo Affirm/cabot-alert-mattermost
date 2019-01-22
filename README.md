@@ -1,8 +1,10 @@
 Cabot Mattermost Plugin
 =====
 
-This is an alert plugin for the cabot service monitoring tool.
+This is an alert plugin for the Cabot service monitoring tool.
 It allows you to alert users by their user handle in a [Mattermost](https://mattermost.com/) room.
+
+**This plugin is designed to work with the [Affirm/cabot](https://github.com/Affirm/cabot) fork.** See [issue 12](https://github.com/Affirm/cabot-alert-mattermost/issues/12) for more info.
 
 ## Installation
 
