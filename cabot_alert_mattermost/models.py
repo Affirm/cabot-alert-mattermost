@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 # name of the Cabot MM user, so it can add itself to channels
 CABOT_USERNAME = env.get('MATTERMOST_CABOT_USERNAME', 'cabot')
 
+# if a user's MM alias matches this, they won't be @mentioned or called out
+# this is useful for dummy users (PagerDuty, mailing list users, etc.)
+IGNORE_ALIAS = 'ignore'
+
 EMOJIS = {
     'WARNING': ":thinking:",
     'ERROR': ":sad-panda:",
@@ -240,7 +244,8 @@ class MatterMostAlert(AlertPlugin):
         aliases = []
         for mm_data in MatterMostAlertUserData.objects.filter(user__user__in=users):
             if mm_data.mattermost_alias:
-                aliases.append(mm_data.mattermost_alias)
+                if mm_data.mattermost_alias != IGNORE_ALIAS:
+                    aliases.append(mm_data.mattermost_alias)
                 missing_users.remove(mm_data.user.user)
 
         missing_aliases = []
