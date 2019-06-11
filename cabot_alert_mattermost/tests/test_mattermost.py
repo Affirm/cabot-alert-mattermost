@@ -24,6 +24,8 @@ class TestMattermostAlerts(PluginTestCase):
         self.service.mattermost_channel_id = 'better-channel'
 
         self.plugin = models.MatterMostAlert.objects.get()
+        self.user.first_name = 'RENÉE'
+        self.user.last_name = '☃'
 
         # self.user's service key is user_key
         models.MatterMostAlertUserData.objects.create(user=self.user.profile, mattermost_alias='testuser_alias')
@@ -72,7 +74,7 @@ class TestMattermostAlerts(PluginTestCase):
                                      u'##### Failing checks\n\n\n\n\n'
                                      u'* [ES Metric Check](http://localhost/check/10104/) - \n\n\n\n\n\n'
                                      u' @testuser_alias :point_up:\n\n\n'
-                                     u'Someone tell [dolores@affirm.com](http://localhost/user/{}/profile/'
+                                     u'Someone tell [RENÉE ☃](http://localhost/user/{}/profile/'
                                      u'MatterMost%20Plugin) to add their MM alias to their profile! :angry:\n'
                                      .format(self.duty_officer.pk),
                              'fallback': 'Service is ERROR'

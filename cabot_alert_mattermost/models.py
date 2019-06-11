@@ -251,7 +251,7 @@ class MatterMostAlert(AlertPlugin):
         missing_aliases = []
         for user in missing_users:
             if user.first_name:
-                name = '{} {}'.format(user.first_name, user.last_name)
+                name = u'{} {}'.format(user.first_name, user.last_name)
             elif user.email:
                 name = user.email
             else:
