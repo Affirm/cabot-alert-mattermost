@@ -278,12 +278,18 @@ class MatterMostAlert(AlertPlugin):
                 # Don't alert repeatedly for ERROR
                 alert = False
         if current_status == service.PASSING_STATUS:
+            if old_status == service.ACKED_STATUS:
+                # Don't message repeatedly for new successes after ACKED failures
+                return
             if old_status == service.WARNING_STATUS:
                 # Don't alert for recovery from WARNING status
                 alert = False
         if current_status == service.ACKED_STATUS:
             if old_status == service.ACKED_STATUS:
                 # Don't message repeatedly for ACKED status
+                return
+            if old_status == service.PASSING_STATUS:
+                # Don't message for acked failures even it started passing
                 return
             # Don't @mention when transitioning into the ACKED status
             alert = False
