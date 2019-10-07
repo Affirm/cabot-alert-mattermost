@@ -109,3 +109,15 @@ class TestMattermostAlerts(PluginTestCase):
     def test_acked_to_acked(self, send_alert):
         self.transition_service_status(Service.ACKED_STATUS, Service.ACKED_STATUS)
         self.assertFalse(send_alert.called)
+
+
+    @patch('cabot_alert_mattermost.models.MatterMostAlert._send_alert')
+    def test_passing_to_acked(self, send_alert):
+        self.transition_service_status(Service.PASSING_STATUS, Service.ACKED_STATUS)
+        self.assertFalse(send_alert.called)
+
+
+    @patch('cabot_alert_mattermost.models.MatterMostAlert._send_alert')
+    def test_acked_to_passing(self, send_alert):
+        self.transition_service_status(Service.ACKED_STATUS, Service.PASSING_STATUS)
+        self.assertFalse(send_alert.called)
