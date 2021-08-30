@@ -203,13 +203,13 @@ class MatterMostAlert(AlertPlugin):
         except requests.HTTPError:
             logger.exception('Failed to add users to channel %s. Is the Cabot MM user an admin here?', channel_id)
 
-        failing_checks = service.all_failing_checks()
+        failing_checks = list(service.all_failing_checks())
 
         # Upload images for all failing checks
         file_ids = []
         try:
             files = []
-            for check in failing_checks:
+            for check in failing_checks[:5]:
                 image = check.get_status_image()
                 if image is not None:
                     filename = '{}.png'.format(check.name)
